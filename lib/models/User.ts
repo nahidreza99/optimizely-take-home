@@ -6,8 +6,8 @@ export interface IUser extends Document {
   email?: string;
   phone?: string;
   dateOfBirth: Date;
-  city: string;
-  country: string;
+  city?: string;
+  country?: string;
   gender: string;
   password: string;
   refreshToken?: string;
@@ -48,12 +48,10 @@ const UserSchema = new Schema<IUser>(
     },
     city: {
       type: String,
-      required: [true, "City is required"],
       trim: true,
     },
     country: {
       type: String,
-      required: [true, "Country is required"],
       trim: true,
     },
     gender: {
@@ -79,7 +77,15 @@ const UserSchema = new Schema<IUser>(
 UserSchema.index({ email: 1 }, { unique: true, sparse: true });
 UserSchema.index({ phone: 1 }, { unique: true, sparse: true });
 
-const User: Model<IUser> =
-  mongoose.models.User || mongoose.model<IUser>("User", UserSchema);
+// Delete the model if it already exists to ensure we use the updated schema
+// This is necessary when schema changes are made to avoid using cached old schema
+if (mongoose.models.User) {
+  delete mongoose.models.User;
+}
+if ((mongoose as any).modelSchemas?.User) {
+  delete (mongoose as any).modelSchemas.User;
+}
+
+const User: Model<IUser> = mongoose.model<IUser>("User", UserSchema);
 
 export default User;
