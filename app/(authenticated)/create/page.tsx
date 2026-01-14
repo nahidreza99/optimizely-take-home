@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -21,6 +22,13 @@ interface ContentType {
   updated_at: string;
 }
 
+interface JobStatus {
+  id: string;
+  status: "pending" | "success" | "failed";
+  created_at: string;
+  updated_at: string;
+}
+
 export default function CreatePage() {
   const [contentTypes, setContentTypes] = useState<ContentType[]>([]);
   const [selectedContentType, setSelectedContentType] = useState<string>("");
@@ -28,8 +36,13 @@ export default function CreatePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingContentTypes, setIsLoadingContentTypes] = useState(true);
   const [error, setError] = useState<string>("");
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [buttonState, setButtonState] = useState<
+    "continue" | "scheduled" | "creating"
+  >("continue");
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const router = useRouter();
-  const { accessToken } = useAuth();
+  useAuth(); // Ensure auth context is available
 
   // Fetch content types on page load
   useEffect(() => {
@@ -53,6 +66,89 @@ export default function CreatePage() {
     fetchContentTypes();
   }, []);
 
+  // Poll job status
+  useEffect(() => {
+    if (!jobId) return;
+
+    const QUEUE_EXECUTION_DELAY = parseInt(
+      process.env.NEXT_PUBLIC_QUEUE_EXECUTION_DELAY || "60",
+      10
+    );
+    const POLL_INTERVAL = 2000; // Poll every 2 seconds
+
+    const pollJobStatus = async () => {
+      try {
+        const response = await fetch(`/api/ai/job/${jobId}`);
+        if (!response.ok) {
+          throw new Error("Failed to fetch job status");
+        }
+
+        const data = await response.json();
+        const status: JobStatus = data.data;
+
+        // Calculate when the delay period ends
+        const createdAt = new Date(status.created_at).getTime();
+        const delayEndTime = createdAt + QUEUE_EXECUTION_DELAY * 1000;
+        const now = Date.now();
+
+        // Determine button state
+        if (now < delayEndTime) {
+          // Still in scheduled period
+          setButtonState("scheduled");
+        } else if (status.status === "pending") {
+          // Delay passed but still processing
+          setButtonState("creating");
+        } else if (status.status === "success") {
+          // Job completed successfully
+          setButtonState("continue");
+          // Stop polling
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+
+          // Fetch generated content
+          try {
+            const contentResponse = await fetch(`/api/ai/job/${jobId}/content`);
+            if (contentResponse.ok) {
+              // Content is ready, redirect to dashboard
+              router.push("/dashboard");
+            } else {
+              // Content not ready yet, keep polling or show error
+              setError("Content is not ready yet. Please wait...");
+            }
+          } catch (contentErr) {
+            console.error("Error fetching content:", contentErr);
+            setError("Failed to fetch generated content");
+          }
+        } else if (status.status === "failed") {
+          // Job failed
+          setButtonState("continue");
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          setError("Job failed. Please try again.");
+        }
+      } catch (err) {
+        console.error("Error polling job status:", err);
+        // Don't stop polling on error, just log it
+      }
+    };
+
+    // Start polling immediately, then every POLL_INTERVAL
+    pollJobStatus();
+    pollingIntervalRef.current = setInterval(pollJobStatus, POLL_INTERVAL);
+
+    // Cleanup on unmount
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [jobId, router]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -68,6 +164,7 @@ export default function CreatePage() {
     }
 
     setIsLoading(true);
+    setButtonState("scheduled");
 
     try {
       const response = await fetch("/api/ai/generate", {
@@ -87,14 +184,15 @@ export default function CreatePage() {
       }
 
       const data = await response.json();
-      // Redirect to dashboard for now
-      router.push("/dashboard");
+      // Store job ID to start polling
+      setJobId(data.data.id);
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
       } else {
         setError("An unknown error occurred. Please try again.");
       }
+      setButtonState("continue");
     } finally {
       setIsLoading(false);
     }
@@ -118,7 +216,12 @@ export default function CreatePage() {
             <Select
               value={selectedContentType}
               onValueChange={setSelectedContentType}
-              disabled={isLoadingContentTypes || isLoading}
+              disabled={
+                isLoadingContentTypes ||
+                isLoading ||
+                buttonState === "scheduled" ||
+                buttonState === "creating"
+              }
             >
               <SelectTrigger id="content-type" className="w-full">
                 <SelectValue placeholder="Select a content type" />
@@ -155,7 +258,11 @@ export default function CreatePage() {
               placeholder="Enter your prompt here..."
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              disabled={isLoading}
+              disabled={
+                isLoading ||
+                buttonState === "scheduled" ||
+                buttonState === "creating"
+              }
               rows={6}
               className="resize-none"
             />
@@ -169,10 +276,26 @@ export default function CreatePage() {
 
           <Button
             type="submit"
-            disabled={isLoading || isLoadingContentTypes}
+            disabled={
+              isLoading ||
+              isLoadingContentTypes ||
+              buttonState === "scheduled" ||
+              buttonState === "creating"
+            }
             className="w-full"
           >
-            {isLoading ? "Creating..." : "Continue"}
+            <span className="flex items-center justify-center gap-2">
+              {(buttonState === "scheduled" || buttonState === "creating") && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              {buttonState === "scheduled"
+                ? "Scheduled"
+                : buttonState === "creating"
+                ? "Creating"
+                : isLoading
+                ? "Creating..."
+                : "Continue"}
+            </span>
           </Button>
         </form>
       </div>
