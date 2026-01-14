@@ -147,7 +147,7 @@ export function createSocketIOServer() {
     }
   });
 
-  const port = parseInt(process.env.SOCKET_IO_PORT || "3001", 10);
+  const port = parseInt(process.env.PORT || process.env.SOCKET_IO_PORT || "3001", 10);
 
   httpServer.listen(port, () => {
     console.log(`Socket.io server listening on port ${port}`);
