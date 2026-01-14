@@ -6,6 +6,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import { useRouter } from "next/navigation";
 
@@ -56,6 +57,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(USER_KEY);
   };
 
+  const refreshAccessTokenRef = useRef<(() => Promise<boolean>) | null>(null);
+
   const refreshAccessToken = useCallback(async (): Promise<boolean> => {
     try {
       const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
@@ -87,6 +90,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
   }, []);
+
+  useEffect(() => {
+    refreshAccessTokenRef.current = refreshAccessToken;
+  }, [refreshAccessToken]);
 
   // Initialize auth state from localStorage
   useEffect(() => {
@@ -208,26 +215,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const [url, options = {}] = args;
       const headers = new Headers(options.headers);
 
-      // Add access token if available
-      if (accessToken) {
-        headers.set("Authorization", `Bearer ${accessToken}`);
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem(ACCESS_TOKEN_KEY)
+          : null;
+
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
       }
 
       let response = await originalFetch(url, { ...options, headers });
 
       // If 401, try to refresh token and retry
-      if (response.status === 401 && accessToken) {
-        const refreshed = await refreshAccessToken();
-        if (refreshed) {
-          const newHeaders = new Headers(options.headers);
-          newHeaders.set(
-            "Authorization",
-            `Bearer ${localStorage.getItem(ACCESS_TOKEN_KEY)}`
-          );
-          response = await originalFetch(url, {
-            ...options,
-            headers: newHeaders,
-          });
+      if (response.status === 401) {
+        // Use ref to get the latest refreshAccessToken function
+        const refreshFn = refreshAccessTokenRef.current;
+        if (refreshFn) {
+          const refreshed = await refreshFn();
+          if (refreshed) {
+            // Get the new token after refresh
+            const newToken =
+              typeof window !== "undefined"
+                ? localStorage.getItem(ACCESS_TOKEN_KEY)
+                : null;
+
+            if (newToken) {
+              const newHeaders = new Headers(options.headers);
+              newHeaders.set("Authorization", `Bearer ${newToken}`);
+              response = await originalFetch(url, {
+                ...options,
+                headers: newHeaders,
+              });
+            }
+          }
         }
       }
 
@@ -237,7 +257,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       window.fetch = originalFetch;
     };
-  }, [accessToken, refreshAccessToken]);
+  }, []); // Setup once on mount - no dependencies
 
   return (
     <AuthContext.Provider

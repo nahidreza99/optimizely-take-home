@@ -21,6 +21,91 @@ const getQueue = () => {
   });
 };
 
+// GET - Get success jobs for authenticated user
+export async function GET(request: NextRequest) {
+  try {
+    await connectDB();
+
+    // Verify authentication
+    const userId = await verifyAuth(request);
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Extract pagination query parameters
+    const { searchParams } = new URL(request.url);
+    const limitParam = searchParams.get("limit");
+    const offsetParam = searchParams.get("offset");
+
+    // Validate and set defaults
+    let limit = 20; // default
+    let offset = 0; // default
+
+    if (limitParam) {
+      const parsedLimit = parseInt(limitParam, 10);
+      if (!isNaN(parsedLimit) && parsedLimit > 0) {
+        limit = Math.min(parsedLimit, 100); // max 100
+      }
+    }
+
+    if (offsetParam) {
+      const parsedOffset = parseInt(offsetParam, 10);
+      if (!isNaN(parsedOffset) && parsedOffset >= 0) {
+        offset = parsedOffset;
+      }
+    }
+
+    // Query success jobs for the authenticated user
+    const query = {
+      user: userId,
+      status: "success",
+    };
+
+    // Get total count for pagination metadata
+    const total = await AIJob.countDocuments(query);
+
+    // Fetch paginated jobs
+    const jobs = await AIJob.find(query)
+      .sort({ created_at: -1 }) // Most recent first
+      .limit(limit)
+      .skip(offset)
+      .lean();
+
+    // Calculate hasMore
+    const hasMore = offset + jobs.length < total;
+
+    return NextResponse.json(
+      {
+        data: jobs.map((job) => ({
+          id: job._id.toString(),
+          job_id: job.job_id,
+          content_type: job.content_type,
+          prompt: job.prompt,
+          created_at: job.created_at,
+          updated_at: job.updated_at,
+        })),
+        count: jobs.length,
+        total,
+        limit,
+        offset,
+        hasMore,
+      },
+      { status: 200 }
+    );
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      return NextResponse.json(
+        { error: "Internal server error", message: error.message },
+        { status: 500 }
+      );
+    }
+    return NextResponse.json(
+      { error: "Internal server error", message: "An unknown error occurred" },
+      { status: 500 }
+    );
+  }
+}
+
 // POST - Create a new AI generation job
 export async function POST(request: NextRequest) {
   try {
