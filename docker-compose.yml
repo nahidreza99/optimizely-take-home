@@ -1,0 +1,69 @@
+services:
+  # Database Initialization Service (runs once before app starts)
+  init-db:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: optimizely-init-db
+    env_file:
+      - .env
+    command: pnpm tsx scripts/init-content-types.ts
+    networks:
+      - optimizely-network
+    restart: "no"
+
+  # Next.js App Service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: optimizely-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    command: pnpm start
+    depends_on:
+      init-db:
+        condition: service_completed_successfully
+    networks:
+      - optimizely-network
+
+  # Worker Service
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: optimizely-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    command: pnpm worker
+    networks:
+      - optimizely-network
+
+  # Socket Server Service
+  socket-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: optimizely-socket-server
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    command: pnpm socket-server
+    networks:
+      - optimizely-network
+
+networks:
+  optimizely-network:
+    driver: bridge

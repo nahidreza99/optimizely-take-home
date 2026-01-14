@@ -62,5 +62,4 @@ if (mongooseWithSchemas.modelSchemas?.Feedback) {
 const Feedback: Model<IFeedback> =
   mongoose.models.Feedback || mongoose.model<IFeedback>("Feedback", FeedbackSchema);
 
-export { IFeedback };
 export default Feedback;

@@ -63,5 +63,4 @@ const GeneratedContent: Model<IGeneratedContent> =
   mongoose.models.GeneratedContent ||
   mongoose.model<IGeneratedContent>("GeneratedContent", GeneratedContentSchema);
 
-export { IGeneratedContent };
 export default GeneratedContent;

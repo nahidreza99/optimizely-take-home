@@ -125,14 +125,8 @@ export default function CreatePage() {
           jobCreatedAtRef.current + QUEUE_EXECUTION_DELAY * 1000;
         const now = Date.now();
 
-        // Determine button state
-        if (now < delayEndTime) {
-          // Still in scheduled period
-          setButtonState("scheduled");
-        } else if (event.status === "pending") {
-          // Delay passed but still processing
-          setButtonState("creating");
-        } else if (event.status === "success") {
+        // Check status first - handle success/failed immediately regardless of scheduled time
+        if (event.status === "success") {
           // Job completed successfully
           setButtonState("continue");
 
@@ -166,9 +160,15 @@ export default function CreatePage() {
               });
           }
         } else if (event.status === "failed") {
-          // Job failed
+          // Job failed - handle immediately regardless of scheduled time
           setButtonState("continue");
           setError("Job failed. Please try again.");
+        } else if (now < delayEndTime) {
+          // Still in scheduled period
+          setButtonState("scheduled");
+        } else if (event.status === "pending") {
+          // Delay passed but still processing
+          setButtonState("creating");
         }
       } else {
         // If we don't have creation time, just use status
