@@ -231,6 +231,9 @@ export function startAIGenerationWorker() {
   );
 
   worker.on("completed", (job: Job) => {
+    // TODO: uncomment during deployment
+    // return;
+    // TODO: remove during deployment
     console.log(`BullMQ job ${job.id} completed`);
   });
 

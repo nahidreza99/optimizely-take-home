@@ -3,5 +3,10 @@
     "name": "Dashboard",
     "link": "/dashboard",
     "icon": "LayoutDashboard"
+  },
+  {
+    "name": "Create",
+    "link": "/create",
+    "icon": "Plus"
   }
 ]
