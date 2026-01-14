@@ -226,7 +226,7 @@ export default function CreatePage() {
               <SelectTrigger id="content-type" className="w-full">
                 <SelectValue placeholder="Select a content type" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-background">
                 {isLoadingContentTypes ? (
                   <SelectItem value="loading" disabled>
                     Loading...
@@ -269,7 +269,7 @@ export default function CreatePage() {
           </div>
 
           {error && (
-            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+            <div className="rounded-md bg-destructive/10 p-3 text-sm text-red-700">
               {error}
             </div>
           )}
@@ -282,7 +282,7 @@ export default function CreatePage() {
               buttonState === "scheduled" ||
               buttonState === "creating"
             }
-            className="w-full"
+            className="w-full border"
           >
             <span className="flex items-center justify-center gap-2">
               {(buttonState === "scheduled" || buttonState === "creating") && (
