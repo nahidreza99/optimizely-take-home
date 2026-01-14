@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import Image from "next/image";
 import { FormField } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -42,10 +43,18 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background font-sans">
-      <main className="flex items-center min-h-screen w-full py-32 px-16 bg-background">
-        <div className="hidden sm:block w-1/2"></div>
-        <div className="flex justify-center items-center w-1/2">
-          <Card className="p-8">
+      <main className="flex flex-col sm:flex-row items-center min-h-screen w-full py-8 sm:py-32 px-4 sm:px-16 md:py-0 md:px-0 bg-background">
+        <div className="hidden md:flex md:w-1/2 md:h-screen md:relative">
+          <Image
+            src="/optimizely-bg.png"
+            alt="Optimizely Banner"
+            fill
+            className="object-cover"
+            priority
+          />
+        </div>
+        <div className="flex justify-center items-center w-full md:w-1/2 md:px-16 md:py-32">
+          <Card className="p-6 sm:p-8 w-full max-w-md">
             <CardHeader className="px-0">
               <CardTitle>Login</CardTitle>
             </CardHeader>

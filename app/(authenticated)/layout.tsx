@@ -48,10 +48,10 @@ export default function AuthenticatedLayout({
         {/* <SidebarRail /> */}
       </Sidebar>
       <SidebarInset>
-        <header className="flex h-16 items-center justify-between border-b px-6">
+        <header className="flex h-16 items-center justify-between border-b px-4 sm:px-6">
           <SidebarTrigger className="cursor-pointer" />
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-foreground">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <span className="hidden sm:inline text-sm font-medium text-foreground">
               {user.firstName} {user.lastName}
             </span>
             <Button
@@ -61,7 +61,7 @@ export default function AuthenticatedLayout({
               className="gap-2 cursor-pointer"
             >
               <LogOut className="h-4 w-4" />
-              Logout
+              <span className="hidden sm:inline">Logout</span>
             </Button>
           </div>
         </header>
