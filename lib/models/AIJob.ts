@@ -8,6 +8,7 @@ export interface IAIJob extends Document {
   status: "pending" | "success" | "failed";
   retry_count: number;
   saved: boolean;
+  title: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -45,6 +46,11 @@ const AIJobSchema = new Schema<IAIJob>(
     saved: {
       type: Boolean,
       default: false,
+    },
+    title: {
+      type: String,
+      default: null,
+      trim: true,
     },
   },
   {

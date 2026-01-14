@@ -27,6 +27,7 @@ interface SuccessJob {
   job_id: string | null;
   content_type: string;
   prompt: string;
+  title: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -142,12 +143,12 @@ export function SidebarNav() {
           <SidebarGroupContent>
             <SidebarMenu>
               {successJobs.map((job) => {
-                const jobIdDisplay = job.job_id || job.id;
-                // Truncate long job IDs for display
-                const truncatedJobId =
-                  jobIdDisplay.length > 8
-                    ? `${jobIdDisplay.slice(0, 8)}...`
-                    : jobIdDisplay;
+                const displayText = job.title || job.job_id || job.id;
+                // Truncate long text for display
+                const truncatedText =
+                  displayText.length > 20
+                    ? `${displayText.slice(0, 20)}...`
+                    : displayText;
                 const isActive = pathname === `/jobs/${job.id}`;
 
                 return (
@@ -155,12 +156,12 @@ export function SidebarNav() {
                     <SidebarMenuButton
                       asChild
                       isActive={isActive}
-                      tooltip={jobIdDisplay}
+                      tooltip={displayText}
                       className="[&>svg]:!size-[18px]"
                     >
                       <Link href={`/jobs/${job.id}`}>
                         <LucideIcons.CheckCircle className="h-[18px] w-[18px] shrink-0" />
-                        <span>{truncatedJobId}</span>
+                        <span>{truncatedText}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

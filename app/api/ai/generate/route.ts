@@ -4,6 +4,7 @@ import AIJob from "@/lib/models/AIJob";
 import { verifyAuth } from "@/lib/middleware/auth";
 import { Queue } from "bullmq";
 import Redis from "ioredis";
+import { GoogleGenAI } from "@google/genai";
 
 // Initialize BullMQ queue
 const getQueue = () => {
@@ -20,6 +21,39 @@ const getQueue = () => {
     connection,
   });
 };
+
+// Initialize Gemini AI client
+const getGeminiAI = () => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY environment variable is not set");
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
+// Generate a short title from prompt
+async function generateTitle(prompt: string): Promise<string | null> {
+  try {
+    const ai = getGeminiAI();
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Generate a short title (maximum 50 characters) for this prompt. Respond with ONLY the title, no additional text:\n\nPrompt: "${prompt}"`,
+    });
+
+    if (!response || !response.text) {
+      console.error("Error generating title: response.text is undefined");
+      return null;
+    }
+
+    const title = response.text.trim();
+    // Limit to 50 characters
+    return title.length > 50 ? title.substring(0, 50) : title || null;
+  } catch (error) {
+    console.error("Error generating title:", error);
+    // Return null on error (title is optional)
+    return null;
+  }
+}
 
 // GET - Get success jobs for authenticated user
 export async function GET(request: NextRequest) {
@@ -82,6 +116,7 @@ export async function GET(request: NextRequest) {
           job_id: job.job_id,
           content_type: job.content_type,
           prompt: job.prompt,
+          title: job.title || null,
           created_at: job.created_at,
           updated_at: job.updated_at,
         })),
@@ -135,6 +170,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Generate title from prompt
+    const title = await generateTitle(body.prompt);
+
     // Create job record in database
     const job = await AIJob.create({
       user: userId,
@@ -143,6 +181,7 @@ export async function POST(request: NextRequest) {
       job_id: null,
       status: "pending",
       retry_count: 0,
+      title: title,
     });
 
     // Create BullMQ job (delayed execution will be handled by worker)

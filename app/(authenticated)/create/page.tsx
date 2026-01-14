@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { Loader2 } from "lucide-react";
+import { Loader2, Star } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -50,6 +50,11 @@ export default function CreatePage() {
   const [buttonState, setButtonState] = useState<
     "continue" | "scheduled" | "creating"
   >("continue");
+  const [feedbackRating, setFeedbackRating] = useState<number>(0);
+  const [feedbackComment, setFeedbackComment] = useState<string>("");
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string>("");
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const jobCreatedAtRef = useRef<number | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const router = useRouter();
@@ -262,6 +267,10 @@ export default function CreatePage() {
     setPrompt("");
     setError("");
     setButtonState("continue");
+    setFeedbackRating(0);
+    setFeedbackComment("");
+    setFeedbackSubmitted(false);
+    setFeedbackError("");
   };
 
   const handleSave = async () => {
@@ -292,6 +301,68 @@ export default function CreatePage() {
       setIsSaving(false);
     }
   };
+
+  const handleSubmitFeedback = async () => {
+    if (!jobId || feedbackRating === 0) {
+      setFeedbackError("Please select a rating");
+      return;
+    }
+
+    try {
+      setIsSubmittingFeedback(true);
+      setFeedbackError("");
+
+      const response = await fetch(`/api/ai/job/${jobId}/feedback`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          rating: feedbackRating,
+          comment: feedbackComment.trim() || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to submit feedback");
+      }
+
+      setFeedbackSubmitted(true);
+    } catch (err) {
+      if (err instanceof Error) {
+        setFeedbackError(err.message);
+      } else {
+        setFeedbackError("An unknown error occurred while submitting feedback.");
+      }
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
+
+  // Fetch existing feedback when jobContent is set
+  useEffect(() => {
+    if (!jobId || !jobContent) return;
+
+    const fetchFeedback = async () => {
+      try {
+        const response = await fetch(`/api/ai/job/${jobId}/feedback`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.data) {
+            setFeedbackRating(data.data.rating);
+            setFeedbackComment(data.data.comment || "");
+            setFeedbackSubmitted(true);
+          }
+        }
+      } catch (err) {
+        // Silently fail - user can still submit feedback
+        console.error("Error fetching feedback:", err);
+      }
+    };
+
+    fetchFeedback();
+  }, [jobId, jobContent]);
 
   // Show content when job is successful
   if (jobContent) {
@@ -406,6 +477,86 @@ export default function CreatePage() {
                 {jobContent.response}
               </ReactMarkdown>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Feedback Form */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Rate this Content</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {feedbackSubmitted && !feedbackError ? (
+              <div className="text-sm text-muted-foreground">
+                Thank you for your feedback!
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">
+                    Rating (1-5 stars)
+                  </label>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setFeedbackRating(star)}
+                        className="focus:outline-none"
+                        disabled={isSubmittingFeedback}
+                      >
+                        <Star
+                          className={`h-6 w-6 ${
+                            star <= feedbackRating
+                              ? "fill-yellow-400 text-yellow-400"
+                              : "text-muted-foreground"
+                          } transition-colors`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="feedback-comment"
+                    className="text-sm font-medium text-foreground"
+                  >
+                    Comment (optional)
+                  </label>
+                  <Textarea
+                    id="feedback-comment"
+                    placeholder="Share your thoughts about this content..."
+                    value={feedbackComment}
+                    onChange={(e) => setFeedbackComment(e.target.value)}
+                    disabled={isSubmittingFeedback}
+                    rows={4}
+                    className="resize-none"
+                  />
+                </div>
+
+                {feedbackError && (
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                    {feedbackError}
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleSubmitFeedback}
+                  disabled={isSubmittingFeedback || feedbackRating === 0}
+                  className="w-full"
+                >
+                  {isSubmittingFeedback ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    "Submit Feedback"
+                  )}
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
