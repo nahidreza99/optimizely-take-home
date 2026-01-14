@@ -269,7 +269,7 @@ export default function CreatePage() {
             onClick={handleSave}
             disabled={isSaving}
             variant="outline"
-            className="text-black dark:text-white border-border hover:bg-accent"
+            className="text-white bg-black dark:bg-white dark:text-black border-border hover:bg-accent"
           >
             {isSaving ? (
               <>
