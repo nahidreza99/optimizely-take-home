@@ -7,6 +7,7 @@ export interface IAIJob extends Document {
   job_id: string | null;
   status: "pending" | "success" | "failed";
   retry_count: number;
+  saved: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -41,6 +42,10 @@ const AIJobSchema = new Schema<IAIJob>(
       type: Number,
       default: 0,
     },
+    saved: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: {
@@ -67,5 +72,4 @@ if (mongooseWithSchemas.modelSchemas?.AIJob) {
 const AIJob: Model<IAIJob> =
   mongoose.models.AIJob || mongoose.model<IAIJob>("AIJob", AIJobSchema);
 
-export { IAIJob };
 export default AIJob;

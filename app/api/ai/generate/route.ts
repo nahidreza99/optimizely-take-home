@@ -55,10 +55,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Query success jobs for the authenticated user
+    // Query saved success jobs for the authenticated user
     const query = {
       user: userId,
       status: "success",
+      saved: true,
     };
 
     // Get total count for pagination metadata
