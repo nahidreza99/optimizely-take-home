@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from "react-markdown";
 import { Loader2 } from "lucide-react";
 import {
   Select,
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/contexts/AuthContext";
 
 interface ContentType {
@@ -29,6 +31,17 @@ interface JobStatus {
   updated_at: string;
 }
 
+interface JobContent {
+  id: string;
+  job_id: string;
+  user: string;
+  content_type: string;
+  prompt: string;
+  response: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export default function CreatePage() {
   const [contentTypes, setContentTypes] = useState<ContentType[]>([]);
   const [selectedContentType, setSelectedContentType] = useState<string>("");
@@ -37,6 +50,8 @@ export default function CreatePage() {
   const [isLoadingContentTypes, setIsLoadingContentTypes] = useState(true);
   const [error, setError] = useState<string>("");
   const [jobId, setJobId] = useState<string | null>(null);
+  const [jobContent, setJobContent] = useState<JobContent | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [buttonState, setButtonState] = useState<
     "continue" | "scheduled" | "creating"
   >("continue");
@@ -111,8 +126,8 @@ export default function CreatePage() {
           try {
             const contentResponse = await fetch(`/api/ai/job/${jobId}/content`);
             if (contentResponse.ok) {
-              // Content is ready, redirect to dashboard
-              router.push("/dashboard");
+              const contentData = await contentResponse.json();
+              setJobContent(contentData.data);
             } else {
               // Content not ready yet, keep polling or show error
               setError("Content is not ready yet. Please wait...");
@@ -147,7 +162,7 @@ export default function CreatePage() {
         pollingIntervalRef.current = null;
       }
     };
-  }, [jobId, router]);
+  }, [jobId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -198,6 +213,165 @@ export default function CreatePage() {
     }
   };
 
+  const handleAbandon = () => {
+    // Reset everything and go back to create form
+    setJobId(null);
+    setJobContent(null);
+    setSelectedContentType("");
+    setPrompt("");
+    setError("");
+    setButtonState("continue");
+  };
+
+  const handleSave = async () => {
+    if (!jobId) return;
+
+    try {
+      setIsSaving(true);
+      setError("");
+
+      const response = await fetch(`/api/ai/job/${jobId}/save`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save job");
+      }
+
+      // Navigate to the job details page
+      router.push(`/jobs/${jobId}`);
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("An unknown error occurred while saving.");
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Show content when job is successful
+  if (jobContent) {
+    return (
+      <div className="flex min-h-full flex-col">
+        {/* Action buttons at top right */}
+        <div className="mb-6 flex justify-end gap-3">
+          <Button
+            onClick={handleAbandon}
+            variant="destructive"
+            disabled={isSaving}
+          >
+            Abandon
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={isSaving}
+            variant="outline"
+            className="text-black dark:text-white border-border hover:bg-accent"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save"
+            )}
+          </Button>
+        </div>
+
+        {/* Content display */}
+        <Card className="flex-1">
+          <CardHeader>
+            <CardTitle>Generated Content</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="markdown-content">
+              <ReactMarkdown
+                components={{
+                  h1: ({ children }) => (
+                    <h1 className="mb-4 text-3xl font-bold">{children}</h1>
+                  ),
+                  h2: ({ children }) => (
+                    <h2 className="mb-3 mt-6 text-2xl font-semibold">
+                      {children}
+                    </h2>
+                  ),
+                  h3: ({ children }) => (
+                    <h3 className="mb-2 mt-4 text-xl font-semibold">
+                      {children}
+                    </h3>
+                  ),
+                  h4: ({ children }) => (
+                    <h4 className="mb-2 mt-3 text-lg font-semibold">
+                      {children}
+                    </h4>
+                  ),
+                  p: ({ children }) => (
+                    <p className="mb-4 leading-7">{children}</p>
+                  ),
+                  ul: ({ children }) => (
+                    <ul className="mb-4 ml-6 list-disc space-y-2">
+                      {children}
+                    </ul>
+                  ),
+                  ol: ({ children }) => (
+                    <ol className="mb-4 ml-6 list-decimal space-y-2">
+                      {children}
+                    </ol>
+                  ),
+                  li: ({ children }) => (
+                    <li className="leading-7">{children}</li>
+                  ),
+                  code: ({ children, className }) => {
+                    const isInline = !className;
+                    return isInline ? (
+                      <code className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono">
+                        {children}
+                      </code>
+                    ) : (
+                      <code className={className}>{children}</code>
+                    );
+                  },
+                  pre: ({ children }) => (
+                    <pre className="mb-4 overflow-x-auto rounded-lg bg-muted p-4">
+                      {children}
+                    </pre>
+                  ),
+                  blockquote: ({ children }) => (
+                    <blockquote className="mb-4 border-l-4 border-muted-foreground/30 pl-4 italic">
+                      {children}
+                    </blockquote>
+                  ),
+                  strong: ({ children }) => (
+                    <strong className="font-semibold">{children}</strong>
+                  ),
+                  em: ({ children }) => <em className="italic">{children}</em>,
+                  a: ({ children, href }) => (
+                    <a
+                      href={href}
+                      className="text-primary underline hover:text-primary/80"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {children}
+                    </a>
+                  ),
+                  hr: () => <hr className="my-6 border-border" />,
+                }}
+              >
+                {jobContent.response}
+              </ReactMarkdown>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Show form when no content is available
   return (
     <div className="flex min-h-full flex-col items-center justify-center p-6">
       <div className="w-full max-w-2xl space-y-6">
