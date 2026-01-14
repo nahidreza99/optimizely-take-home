@@ -105,14 +105,27 @@ export default function CreatePage() {
     socket.emit("subscribe:job", jobId);
 
     // Calculate initial button state based on creation time
-    if (jobCreatedAtRef.current) {
-      const delayEndTime =
-        jobCreatedAtRef.current + QUEUE_EXECUTION_DELAY * 1000;
-      const now = Date.now();
-      if (now < delayEndTime) {
-        setButtonState("scheduled");
+    const updateButtonState = () => {
+      if (jobCreatedAtRef.current) {
+        const delayEndTime =
+          jobCreatedAtRef.current + QUEUE_EXECUTION_DELAY * 1000;
+        const now = Date.now();
+        if (now < delayEndTime) {
+          setButtonState("scheduled");
+        } else {
+          // Delay has passed, transition to creating if still in scheduled state
+          setButtonState((prev) => (prev === "scheduled" ? "creating" : prev));
+        }
       }
-    }
+    };
+
+    // Initial state check
+    updateButtonState();
+
+    // Periodic check to transition from scheduled to creating when delay passes
+    const intervalId = setInterval(() => {
+      updateButtonState();
+    }, 1000); // Check every second
 
     // Listen for job update events
     const handleJobUpdate = (event: JobUpdateEvent) => {
@@ -199,6 +212,7 @@ export default function CreatePage() {
 
     // Cleanup on unmount or when jobId changes
     return () => {
+      clearInterval(intervalId);
       if (socketRef.current && socketRef.current.connected) {
         socketRef.current.emit("unsubscribe:job", jobId);
       }
@@ -333,7 +347,9 @@ export default function CreatePage() {
       if (err instanceof Error) {
         setFeedbackError(err.message);
       } else {
-        setFeedbackError("An unknown error occurred while submitting feedback.");
+        setFeedbackError(
+          "An unknown error occurred while submitting feedback."
+        );
       }
     } finally {
       setIsSubmittingFeedback(false);
