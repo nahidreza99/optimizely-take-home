@@ -12,6 +12,59 @@ const QUEUE_EXECUTION_DELAY = parseInt(
 const MAX_JOB_RETRIES = parseInt(process.env.MAX_JOB_RETRIES || "3", 10);
 const POLL_INTERVAL = 5000; // Poll every 5 seconds
 
+// Redis publisher for job updates
+let redisPublisher: Redis | null = null;
+
+function getRedisPublisher(): Redis {
+  if (!redisPublisher) {
+    const redisUrl = process.env.REDIS_URL;
+    if (!redisUrl) {
+      throw new Error("REDIS_URL environment variable is not set");
+    }
+    redisPublisher = new Redis(redisUrl, {
+      maxRetriesPerRequest: null,
+    });
+  }
+  return redisPublisher;
+}
+
+// Publish job update event to Redis pub/sub
+async function publishJobUpdate(
+  jobId: string,
+  userId: string,
+  status: "pending" | "success" | "failed",
+  content?: {
+    id: string;
+    response: string;
+    content_type: string;
+    prompt: string;
+    created_at: Date;
+    updated_at: Date;
+  }
+) {
+  try {
+    const publisher = getRedisPublisher();
+    const event = {
+      jobId,
+      userId,
+      status,
+      content: content
+        ? {
+            id: content.id,
+            response: content.response,
+            content_type: content.content_type,
+            prompt: content.prompt,
+            created_at: content.created_at.toISOString(),
+            updated_at: content.updated_at.toISOString(),
+          }
+        : undefined,
+    };
+    await publisher.publish("job:updates", JSON.stringify(event));
+  } catch (error) {
+    console.error("Error publishing job update to Redis:", error);
+  }
+}
+
 // Initialize Gemini AI client
 const getGeminiAI = () => {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -63,12 +116,27 @@ async function processJob(aiJob: IAIJob) {
       console.log(
         `Job ${aiJob._id} already has generated content, marked as success`
       );
+      // Publish update with existing content
+      await publishJobUpdate(
+        aiJob._id.toString(),
+        aiJob.user.toString(),
+        "success",
+        {
+          id: existingContent._id.toString(),
+          response: existingContent.response,
+          content_type: existingContent.content_type,
+          prompt: existingContent.prompt,
+          created_at: existingContent.created_at,
+          updated_at: existingContent.updated_at,
+        }
+      );
       return;
     }
 
     // Create GeneratedContent record
+    let generatedContent;
     try {
-      await GeneratedContent.create({
+      generatedContent = await GeneratedContent.create({
         job: aiJob._id,
         user: aiJob.user,
         response: generatedText,
@@ -90,6 +158,23 @@ async function processJob(aiJob: IAIJob) {
           aiJob.status = "success";
           await aiJob.save();
         }
+        // Fetch the existing content to publish
+        const existing = await GeneratedContent.findOne({ job: aiJob._id });
+        if (existing) {
+          await publishJobUpdate(
+            aiJob._id.toString(),
+            aiJob.user.toString(),
+            "success",
+            {
+              id: existing._id.toString(),
+              response: existing.response,
+              content_type: existing.content_type,
+              prompt: existing.prompt,
+              created_at: existing.created_at,
+              updated_at: existing.updated_at,
+            }
+          );
+        }
         return;
       }
       // Re-throw if it's a different error
@@ -99,6 +184,21 @@ async function processJob(aiJob: IAIJob) {
     // Update job status to success
     aiJob.status = "success";
     await aiJob.save();
+
+    // Publish job success update with content
+    await publishJobUpdate(
+      aiJob._id.toString(),
+      aiJob.user.toString(),
+      "success",
+      {
+        id: generatedContent._id.toString(),
+        response: generatedContent.response,
+        content_type: generatedContent.content_type,
+        prompt: generatedContent.prompt,
+        created_at: generatedContent.created_at,
+        updated_at: generatedContent.updated_at,
+      }
+    );
 
     // TODO: remove during deployment
     console.log(`Job ${aiJob._id} completed successfully`);
@@ -123,6 +223,23 @@ async function processJob(aiJob: IAIJob) {
         );
         aiJob.status = "success";
         await aiJob.save();
+        // Fetch the existing content to publish
+        const existing = await GeneratedContent.findOne({ job: aiJob._id });
+        if (existing) {
+          await publishJobUpdate(
+            aiJob._id.toString(),
+            aiJob.user.toString(),
+            "success",
+            {
+              id: existing._id.toString(),
+              response: existing.response,
+              content_type: existing.content_type,
+              prompt: existing.prompt,
+              created_at: existing.created_at,
+              updated_at: existing.updated_at,
+            }
+          );
+        }
         return;
       }
     }
@@ -139,6 +256,12 @@ async function processJob(aiJob: IAIJob) {
       // Non-retryable error (e.g., invalid model name) - fail immediately
       aiJob.status = "failed";
       await aiJob.save();
+      // Publish job failure update
+      await publishJobUpdate(
+        aiJob._id.toString(),
+        aiJob.user.toString(),
+        "failed"
+      );
       // TODO: remove during deployment
       console.log(
         `Job ${aiJob._id} failed with non-retryable error (404 - model not found)`
@@ -165,6 +288,12 @@ async function processJob(aiJob: IAIJob) {
       // Max retries reached
       aiJob.status = "failed";
       await aiJob.save();
+      // Publish job failure update
+      await publishJobUpdate(
+        aiJob._id.toString(),
+        aiJob.user.toString(),
+        "failed"
+      );
 
       // TODO: remove during deployment
       console.log(`Job ${aiJob._id} failed after ${MAX_JOB_RETRIES} retries`);

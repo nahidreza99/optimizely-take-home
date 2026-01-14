@@ -15,18 +15,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/contexts/AuthContext";
+import { getSocketClient, JobUpdateEvent } from "@/lib/websocket/client";
+import { Socket } from "socket.io-client";
 
 interface ContentType {
   _id: string;
   title: string;
   average_token_weight: number | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface JobStatus {
-  id: string;
-  status: "pending" | "success" | "failed";
   created_at: string;
   updated_at: string;
 }
@@ -55,7 +50,8 @@ export default function CreatePage() {
   const [buttonState, setButtonState] = useState<
     "continue" | "scheduled" | "creating"
   >("continue");
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const jobCreatedAtRef = useRef<number | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const router = useRouter();
   useAuth(); // Ensure auth context is available
 
@@ -81,7 +77,7 @@ export default function CreatePage() {
     fetchContentTypes();
   }, []);
 
-  // Poll job status
+  // WebSocket connection for job status updates
   useEffect(() => {
     if (!jobId) return;
 
@@ -89,77 +85,121 @@ export default function CreatePage() {
       process.env.NEXT_PUBLIC_QUEUE_EXECUTION_DELAY || "60",
       10
     );
-    const POLL_INTERVAL = 2000; // Poll every 2 seconds
 
-    const pollJobStatus = async () => {
-      try {
-        const response = await fetch(`/api/ai/job/${jobId}`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch job status");
-        }
+    // Get or create socket connection
+    const socket = getSocketClient();
+    if (!socket) {
+      console.error("Failed to get Socket.io client");
+      setError("Failed to connect to job status service");
+      return;
+    }
 
-        const data = await response.json();
-        const status: JobStatus = data.data;
+    socketRef.current = socket;
 
-        // Calculate when the delay period ends
-        const createdAt = new Date(status.created_at).getTime();
-        const delayEndTime = createdAt + QUEUE_EXECUTION_DELAY * 1000;
+    // Subscribe to job updates
+    socket.emit("subscribe:job", jobId);
+
+    // Calculate initial button state based on creation time
+    if (jobCreatedAtRef.current) {
+      const delayEndTime =
+        jobCreatedAtRef.current + QUEUE_EXECUTION_DELAY * 1000;
+      const now = Date.now();
+      if (now < delayEndTime) {
+        setButtonState("scheduled");
+      }
+    }
+
+    // Listen for job update events
+    const handleJobUpdate = (event: JobUpdateEvent) => {
+      if (event.jobId !== jobId) {
+        return; // Ignore updates for other jobs
+      }
+
+      if (jobCreatedAtRef.current) {
+        const delayEndTime =
+          jobCreatedAtRef.current + QUEUE_EXECUTION_DELAY * 1000;
         const now = Date.now();
 
         // Determine button state
         if (now < delayEndTime) {
           // Still in scheduled period
           setButtonState("scheduled");
-        } else if (status.status === "pending") {
+        } else if (event.status === "pending") {
           // Delay passed but still processing
           setButtonState("creating");
-        } else if (status.status === "success") {
+        } else if (event.status === "success") {
           // Job completed successfully
           setButtonState("continue");
-          // Stop polling
-          if (pollingIntervalRef.current) {
-            clearInterval(pollingIntervalRef.current);
-            pollingIntervalRef.current = null;
-          }
 
-          // Fetch generated content
-          try {
-            const contentResponse = await fetch(`/api/ai/job/${jobId}/content`);
-            if (contentResponse.ok) {
-              const contentData = await contentResponse.json();
-              setJobContent(contentData.data);
-            } else {
-              // Content not ready yet, keep polling or show error
-              setError("Content is not ready yet. Please wait...");
-            }
-          } catch (contentErr) {
-            console.error("Error fetching content:", contentErr);
-            setError("Failed to fetch generated content");
+          // Set job content from event if available
+          if (event.content) {
+            setJobContent({
+              id: event.content.id,
+              job_id: jobId,
+              user: "", // Not needed for display
+              content_type: event.content.content_type,
+              prompt: event.content.prompt,
+              response: event.content.response,
+              created_at: event.content.created_at,
+              updated_at: event.content.updated_at,
+            });
+          } else {
+            // Fallback: fetch content if not in event
+            fetch(`/api/ai/job/${jobId}/content`)
+              .then((res) => {
+                if (res.ok) {
+                  return res.json();
+                }
+                throw new Error("Failed to fetch content");
+              })
+              .then((data) => {
+                setJobContent(data.data);
+              })
+              .catch((err) => {
+                console.error("Error fetching content:", err);
+                setError("Failed to fetch generated content");
+              });
           }
-        } else if (status.status === "failed") {
+        } else if (event.status === "failed") {
           // Job failed
           setButtonState("continue");
-          if (pollingIntervalRef.current) {
-            clearInterval(pollingIntervalRef.current);
-            pollingIntervalRef.current = null;
-          }
           setError("Job failed. Please try again.");
         }
-      } catch (err) {
-        console.error("Error polling job status:", err);
-        // Don't stop polling on error, just log it
+      } else {
+        // If we don't have creation time, just use status
+        if (event.status === "success") {
+          setButtonState("continue");
+          if (event.content) {
+            setJobContent({
+              id: event.content.id,
+              job_id: jobId,
+              user: "",
+              content_type: event.content.content_type,
+              prompt: event.content.prompt,
+              response: event.content.response,
+              created_at: event.content.created_at,
+              updated_at: event.content.updated_at,
+            });
+          }
+        } else if (event.status === "failed") {
+          setButtonState("continue");
+          setError("Job failed. Please try again.");
+        } else if (event.status === "pending") {
+          setButtonState("creating");
+        }
       }
     };
 
-    // Start polling immediately, then every POLL_INTERVAL
-    pollJobStatus();
-    pollingIntervalRef.current = setInterval(pollJobStatus, POLL_INTERVAL);
+    socket.on("job:update", handleJobUpdate);
 
-    // Cleanup on unmount
+    // Cleanup on unmount or when jobId changes
     return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit("unsubscribe:job", jobId);
+      }
+      // Remove all handlers for this event since handleJobUpdate is recreated on each render
+      if (socketRef.current) {
+        socketRef.current.off("job:update");
       }
     };
   }, [jobId]);
@@ -199,8 +239,9 @@ export default function CreatePage() {
       }
 
       const data = await response.json();
-      // Store job ID to start polling
+      // Store job ID and creation time for WebSocket subscription
       setJobId(data.data.id);
+      jobCreatedAtRef.current = new Date(data.data.created_at).getTime();
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
