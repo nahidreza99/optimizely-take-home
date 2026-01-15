@@ -40,6 +40,40 @@ Common HTTP status codes:
 
 ---
 
+## Utility Endpoints
+
+### Health Check
+
+Check the health status of the API.
+
+**Endpoint**: `GET /api/health`
+
+**Authentication**: Not required (public endpoint)
+
+**Request**: No request body required
+
+**Response**:
+
+**Success (200)**:
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-01-14T12:34:56.789Z"
+}
+```
+
+**Error (500)**:
+```json
+{
+  "status": "error",
+  "timestamp": "2024-01-14T12:34:56.789Z"
+}
+```
+
+**Description**: This endpoint is used for health monitoring and can be used by external services (e.g., Railway, monitoring tools) to verify the API is running and responsive. The endpoint returns the current status and timestamp. A successful response (200) indicates the API is healthy, while a 500 response indicates an error occurred.
+
+---
+
 ## Authentication Endpoints
 
 ### Register User

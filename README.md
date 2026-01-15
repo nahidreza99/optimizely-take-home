@@ -247,6 +247,18 @@ We use a hybrid approach combining BullMQ and database polling:
 - **Recovery**: Database polling allows job recovery after service restarts
 - **Dual System**: BullMQ handles job queuing and distribution, while database polling provides reliability
 
+### Why Railway for Deployment?
+
+Railway was chosen as the deployment platform for this application:
+
+- **Free Tier**: Railway offers a generous free tier that allows running multiple services without cost, making it ideal for development and demonstration purposes
+- **Multi-Service Support**: Unlike serverless platforms like Vercel, Railway can run long-running background processes, including the BullMQ worker service and the Socket.io server, which are essential components of this application
+- **Docker Support**: Native Docker support simplifies deployment of containerized applications with complex service dependencies
+- **Flexibility**: Railway provides flexibility to run three separate services (app, worker, and socket-server) with different configurations while maintaining easy service-to-service communication
+- **Ease of Use**: Simple deployment workflow with automatic builds and deployments from GitHub, making it easy to iterate and deploy changes
+
+While serverless platforms like Vercel are excellent for frontend applications and API routes, they cannot run persistent background worker processes, which is a fundamental requirement for this application's job processing architecture.
+
 ## AI Usage
 
 This project was developed with assistance from various AI tools at different stages:
