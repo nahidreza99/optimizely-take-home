@@ -10,7 +10,7 @@ An AI-powered content generation application that allows users to create various
 - [API Documentation](#api-documentation)
 - [Architectural Decisions](#architectural-decisions)
 - [AI Usage](#ai-usage)
-- [Docker Deployment](#docker-deployment)
+- [Deployment](#deployment)
 - [Critical Challenges](#critical-challenges)
 - [Related Works](#related-works)
 
@@ -279,7 +279,11 @@ This project was developed with assistance from various AI tools at different st
   - Generated API documentation with examples
   - Created architectural decision explanations
 
-## Docker Deployment
+## Deployment
+
+The application can be deployed using Docker Compose for local development or Railway for production deployment.
+
+### Docker Deployment
 
 The application can be deployed using Docker Compose for easier setup and deployment.
 
@@ -312,6 +316,79 @@ This will start:
 The `Dockerfile` uses a multi-stage build process optimized for production. The `docker-compose.yml` file orchestrates all services and ensures proper initialization order.
 
 For more details on Docker configuration, see `Dockerfile` and `docker-compose.yml` in the repository.
+
+### Railway Deployment
+
+The application can be deployed to Railway as three separate services:
+
+1. **App Service**: Next.js application (public service)
+2. **Worker Service**: BullMQ worker (private service)
+3. **Socket Server Service**: Socket.io server (public service)
+
+#### Prerequisites
+
+- Railway account ([railway.app](https://railway.app))
+- GitHub repository (code pushed to GitHub)
+- External MongoDB instance (MongoDB Atlas recommended)
+- External Redis instance (Redis Cloud, Upstash, or Railway's Redis plugin)
+
+#### Service Configuration
+
+Each service should be configured with:
+
+- **App Service**:
+
+  - Build Command: `pnpm build`
+  - Start Command: `pnpm start`
+  - Health Check: `/api/health`
+  - Public Domain: Enabled
+
+- **Socket Server Service**:
+
+  - Build Command: (None - TypeScript files run directly)
+  - Start Command: `pnpm socket-server`
+  - Public Domain: Enabled
+
+- **Worker Service**:
+  - Build Command: (None - TypeScript files run directly)
+  - Start Command: `pnpm worker`
+  - Public Domain: Disabled (private service)
+
+#### Environment Variables
+
+Set the following environment variables in Railway (shared at project level):
+
+- `MONGODB_URI`
+- `REDIS_URL`
+- `JWT_SECRET`
+- `JWT_REFRESH_SECRET`
+- `GEMINI_API_KEY`
+- `QUEUE_EXECUTION_DELAY`
+- `NEXT_PUBLIC_QUEUE_EXECUTION_DELAY`
+- `MAX_JOB_RETRIES`
+
+**Service-specific variables** (set at service level):
+
+- **App Service**: `NEXT_PUBLIC_SOCKET_IO_URL=${{socket-server.RAILWAY_PUBLIC_DOMAIN}}`
+- **Socket Server Service**: Uses `process.env.PORT` (Railway provides this automatically)
+
+#### Service Communication
+
+- The app service connects to the socket server using the socket server's public domain
+- Use Railway's service reference syntax: `${{socket-server.RAILWAY_PUBLIC_DOMAIN}}`
+- All services communicate via external MongoDB and Redis instances
+
+#### Database Initialization
+
+Run the initialization script manually after deployment:
+
+```bash
+pnpm tsx scripts/init-content-types.ts
+```
+
+Or create content types via the API endpoint: `POST /api/content-types`
+
+For detailed Railway deployment instructions, see the deployment plan in the repository.
 
 ---
 
