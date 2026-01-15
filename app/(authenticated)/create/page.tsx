@@ -57,6 +57,7 @@ export default function CreatePage() {
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const jobCreatedAtRef = useRef<number | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const jobCompletedRef = useRef<boolean>(false); // Track if job has completed (success or failed)
   const router = useRouter();
   useAuth(); // Ensure auth context is available
 
@@ -106,15 +107,26 @@ export default function CreatePage() {
 
     // Calculate initial button state based on creation time
     const updateButtonState = () => {
+      // Don't update if job has already completed (success or failed)
+      if (jobCompletedRef.current) {
+        return;
+      }
+
       if (jobCreatedAtRef.current) {
         const delayEndTime =
           jobCreatedAtRef.current + QUEUE_EXECUTION_DELAY * 1000;
         const now = Date.now();
         if (now < delayEndTime) {
-          setButtonState("scheduled");
+          setButtonState((prev) => (prev === "continue" ? prev : "scheduled"));
         } else {
           // Delay has passed, transition to creating if still in scheduled state
-          setButtonState((prev) => (prev === "scheduled" ? "creating" : prev));
+          setButtonState((prev) =>
+            prev === "scheduled"
+              ? "creating"
+              : prev === "continue"
+              ? prev
+              : "creating"
+          );
         }
       }
     };
@@ -141,6 +153,7 @@ export default function CreatePage() {
         // Check status first - handle success/failed immediately regardless of scheduled time
         if (event.status === "success") {
           // Job completed successfully
+          jobCompletedRef.current = true;
           setButtonState("continue");
 
           // Set job content from event if available
@@ -174,6 +187,7 @@ export default function CreatePage() {
           }
         } else if (event.status === "failed") {
           // Job failed - handle immediately regardless of scheduled time
+          jobCompletedRef.current = true;
           setButtonState("continue");
           setError("Job failed. Please try again.");
         } else if (now < delayEndTime) {
@@ -186,6 +200,7 @@ export default function CreatePage() {
       } else {
         // If we don't have creation time, just use status
         if (event.status === "success") {
+          jobCompletedRef.current = true;
           setButtonState("continue");
           if (event.content) {
             setJobContent({
@@ -200,6 +215,7 @@ export default function CreatePage() {
             });
           }
         } else if (event.status === "failed") {
+          jobCompletedRef.current = true;
           setButtonState("continue");
           setError("Job failed. Please try again.");
         } else if (event.status === "pending") {
@@ -261,6 +277,7 @@ export default function CreatePage() {
       // Store job ID and creation time for WebSocket subscription
       setJobId(data.data.id);
       jobCreatedAtRef.current = new Date(data.data.created_at).getTime();
+      jobCompletedRef.current = false; // Reset completion flag for new job
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
@@ -285,6 +302,7 @@ export default function CreatePage() {
     setFeedbackComment("");
     setFeedbackSubmitted(false);
     setFeedbackError("");
+    jobCompletedRef.current = false;
   };
 
   const handleSave = async () => {
